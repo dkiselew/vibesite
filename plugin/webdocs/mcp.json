@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "webdocs": {
+      "url": "https://api.vibesite.online/mcp",
+      "headers": {
+        "Authorization": "Bearer ${MCP_KEY}"
+      }
+    }
+  }
+}

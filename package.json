@@ -1,0 +1,21 @@
+{
+  "name": "webdocs",
+  "private": true,
+  "workspaces": [
+    "worker",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c cyan,magenta \"npm run dev -w worker\" \"npm run dev -w web\"",
+    "test": "npm run test -w worker",
+    "typecheck": "npm run typecheck -w worker && npm run typecheck -w web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "esbuild@0.28.1": true,
+    "workerd@1.20260921.1": true
+  }
+}
