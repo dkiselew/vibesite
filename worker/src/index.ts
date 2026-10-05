@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { bearerMatches } from "./auth";
 import { MAX_HTML_BYTES, publicOrigin } from "./config";
-import { listDocuments, putDocument } from "./documents";
+import { deleteDocument, listDocuments, putDocument } from "./documents";
 import { appError, errorBody, messages } from "./errors";
 import { handleMcp, type McpEnv } from "./mcp";
 
@@ -12,7 +12,7 @@ app.use("/api/*", async (c, next) => {
   if (origin && origin === c.env.APP_ORIGIN) {
     c.header("Access-Control-Allow-Origin", origin);
     c.header("Vary", "Origin");
-    c.header("Access-Control-Allow-Methods", "GET, PUT, OPTIONS");
+    c.header("Access-Control-Allow-Methods", "GET, PUT, DELETE, OPTIONS");
     c.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   }
   if (c.req.method === "OPTIONS") {
@@ -48,6 +48,21 @@ app.put("/api/documents/:name", async (c) => {
     html,
     contentType: c.req.header("Content-Type") ?? null,
   });
+  if (!result.ok) {
+    return new Response(JSON.stringify(errorBody(result.error)), {
+      status: result.error.status,
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+  c.header("Cache-Control", "no-store");
+  return c.json(result.value);
+});
+
+app.delete("/api/documents/:name", async (c) => {
+  const result = await deleteDocument(c.env.BUCKET, c.req.param("name"));
   if (!result.ok) {
     return new Response(JSON.stringify(errorBody(result.error)), {
       status: result.error.status,

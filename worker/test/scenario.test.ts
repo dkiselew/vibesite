@@ -382,6 +382,39 @@ describe("stage 0 loop", () => {
     expect(await newPage.text()).toContain("Version 1");
   });
 
+  it("deletes a document from the bucket over HTTP", async () => {
+    const env = testEnv(createMemoryBucket());
+    const created = await app.request(
+      "http://localhost/api/documents/cv",
+      {
+        method: "PUT",
+        headers: { Authorization: "Bearer secret", "content-type": "text/html" },
+        body: HTML_V1,
+      },
+      env,
+    );
+    expect(created.status).toBe(200);
+
+    const removed = await app.request(
+      "http://localhost/api/documents/cv",
+      { method: "DELETE", headers: { Origin: "http://localhost:5173" } },
+      env,
+    );
+    expect(removed.status).toBe(200);
+    expect(removed.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5173");
+    await expect(removed.json()).resolves.toEqual({ deleted: "cv" });
+
+    const listed = await app.request("http://localhost/api/documents", { method: "GET" }, env);
+    await expect(listed.json()).resolves.toMatchObject({ documents: [] });
+
+    const page = await handlePublic(new Request("http://demo.localhost:8787/cv"), env);
+    expect(page.status).toBe(404);
+
+    const again = await app.request("http://localhost/api/documents/cv", { method: "DELETE" }, env);
+    expect(again.status).toBe(404);
+    await expect(again.json()).resolves.toMatchObject({ error: { code: "not_found" } });
+  });
+
   it("allows the configured app origin to read the list", async () => {
     const env = testEnv(createMemoryBucket());
     const response = await app.request(

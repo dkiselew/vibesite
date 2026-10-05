@@ -1,6 +1,7 @@
 import { Bars3Icon, MagnifyingGlassIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useState } from "react";
 import { DocumentCard } from "@/components/document-card";
+import { DocumentTable, DocumentTableSkeleton } from "@/components/document-table";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -8,6 +9,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fetchDocuments, type DocumentsResponse } from "@/lib/api";
+import { cursorMcpInstallHref } from "@/lib/cursor-mcp";
 
 type LoadState =
   | { status: "loading" }
@@ -42,10 +44,23 @@ export function DocumentList() {
         )
       : [];
 
+  function removeFromList(name: string) {
+    setState((current) => {
+      if (current.status !== "ready") return current;
+      return {
+        status: "ready",
+        data: {
+          ...current.data,
+          documents: current.data.documents.filter((document) => document.name !== name),
+        },
+      };
+    });
+  }
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-6 py-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-4xl font-semibold tracking-tight">Home</h1>
+        <h1 className="text-4xl font-semibold tracking-tight">My workspace</h1>
         <div className="flex items-center gap-2">
           <InputGroup className="min-w-0 flex-1 rounded-full bg-card sm:w-72 sm:flex-none">
             <InputGroupInput
@@ -73,10 +88,17 @@ export function DocumentList() {
               </TabsTrigger>
             </TabsList>
           </Tabs>
+          <AddToCursorButton />
         </div>
       </header>
 
-      {state.status === "loading" ? <DocumentSkeletons /> : null}
+      {state.status === "loading" ? (
+        layout === "list" ? (
+          <DocumentTableSkeleton />
+        ) : (
+          <DocumentSkeletons />
+        )
+      ) : null}
 
       {state.status === "error" ? (
         <Empty>
@@ -100,6 +122,10 @@ export function DocumentList() {
               upload here.
             </EmptyDescription>
           </EmptyHeader>
+          <EmptyContent>
+            <AddToCursorButton />
+            <p>In the Cursor dialog, replace &lt;MCP_KEY&gt; with the Worker secret.</p>
+          </EmptyContent>
         </Empty>
       ) : null}
 
@@ -119,17 +145,34 @@ export function DocumentList() {
             className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3"
           >
             {documents.map((document) => (
-              <DocumentCard key={document.name} document={document} layout="grid" />
+              <DocumentCard key={document.name} document={document} onRemoved={removeFromList} />
             ))}
           </div>
-          <div hidden={layout !== "list"} className="flex flex-col gap-4">
-            {documents.map((document) => (
-              <DocumentCard key={document.name} document={document} layout="list" />
-            ))}
+          <div hidden={layout !== "list"}>
+            <DocumentTable documents={documents} onRemoved={removeFromList} />
           </div>
         </>
       ) : null}
     </main>
+  );
+}
+
+function CursorIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="currentColor">
+      <path d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23" />
+    </svg>
+  );
+}
+
+function AddToCursorButton() {
+  return (
+    <Button variant="outline" asChild>
+      <a href={cursorMcpInstallHref()}>
+        <CursorIcon className="size-4 shrink-0" />
+        Add to Cursor
+      </a>
+    </Button>
   );
 }
 
