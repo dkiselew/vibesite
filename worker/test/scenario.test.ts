@@ -77,6 +77,7 @@ describe("stage 0 loop", () => {
       url: "http://demo.localhost:8787/cv",
       created: true,
     });
+    expect(createdBody.id).toMatch(/^[0-9a-f-]{36}$/i);
 
     const listed = await rpc(env, "tools/call", {
       name: "list_documents",
@@ -84,11 +85,12 @@ describe("stage 0 loop", () => {
     });
     const listBody = toolJson(listed.json!) as {
       workspace: string;
-      documents: { name: string; url: string }[];
+      documents: { id: string; name: string; url: string }[];
     };
     expect(listBody.workspace).toBe("demo");
     expect(listBody.documents.map((doc) => doc.name)).toEqual(["cv"]);
     expect(listBody.documents[0].url).toBe("http://demo.localhost:8787/cv");
+    expect(listBody.documents[0].id).toBe(createdBody.id);
 
     const replaced = await rpc(env, "tools/call", {
       name: "put_document",
@@ -96,6 +98,7 @@ describe("stage 0 loop", () => {
     });
     expect(toolJson(replaced.json!).created).toBe(false);
     expect(toolJson(replaced.json!).url).toBe("http://demo.localhost:8787/cv");
+    expect(toolJson(replaced.json!).id).toBe(createdBody.id);
 
     const fetched = await rpc(env, "tools/call", {
       name: "get_document",
@@ -261,6 +264,122 @@ describe("stage 0 loop", () => {
     const api = await dev.fetch(new Request("http://localhost:8787/cv"), env, ctx);
     expect(api.status).toBe(404);
     expect(await api.json()).toEqual({ error: { code: "not_found", message: "Not found." } });
+  });
+
+  it("accepts a raw PUT of HTML and keeps the id on replace", async () => {
+    const env = testEnv(createMemoryBucket());
+    const created = await app.request(
+      "http://localhost/api/documents/cv",
+      {
+        method: "PUT",
+        headers: { Authorization: "Bearer secret", "content-type": "text/html" },
+        body: HTML_V1,
+      },
+      env,
+    );
+    expect(created.status).toBe(200);
+    const createdBody = (await created.json()) as { id: string; created: boolean; url: string };
+    expect(createdBody.created).toBe(true);
+    expect(createdBody.url).toBe("http://demo.localhost:8787/cv");
+
+    const denied = await app.request(
+      "http://localhost/api/documents/cv",
+      { method: "PUT", body: HTML_V2 },
+      env,
+    );
+    expect(denied.status).toBe(401);
+
+    const replaced = await app.request(
+      "http://localhost/api/documents/cv",
+      {
+        method: "PUT",
+        headers: { Authorization: "Bearer secret" },
+        body: HTML_V2,
+      },
+      env,
+    );
+    const replacedBody = (await replaced.json()) as { id: string; created: boolean };
+    expect(replaced.status).toBe(200);
+    expect(replacedBody.created).toBe(false);
+    expect(replacedBody.id).toBe(createdBody.id);
+
+    const empty = await app.request(
+      "http://localhost/api/documents/cv",
+      {
+        method: "PUT",
+        headers: { Authorization: "Bearer secret" },
+        body: "   ",
+      },
+      env,
+    );
+    expect(empty.status).toBe(400);
+    await expect(empty.json()).resolves.toMatchObject({ error: { code: "invalid_html" } });
+  });
+
+  it("assigns an id to an old object on the next put", async () => {
+    const bucket = createMemoryBucket();
+    bucket.seedWithoutId("legacy", HTML_V1);
+    const env = testEnv(bucket);
+
+    const listed = await app.request("http://localhost/api/documents", { method: "GET" }, env);
+    const before = (await listed.json()) as { documents: { id: string | null; name: string }[] };
+    expect(before.documents[0]).toMatchObject({ name: "legacy", id: null });
+
+    const replaced = await rpc(env, "tools/call", {
+      name: "put_document",
+      arguments: { name: "legacy", html: HTML_V2 },
+    });
+    const body = toolJson(replaced.json!) as { id: string };
+    expect(body.id).toMatch(/^[0-9a-f-]{36}$/i);
+  });
+
+  it("renames a document, keeps the id, and 404s the old URL", async () => {
+    const env = testEnv(createMemoryBucket());
+    const created = await rpc(env, "tools/call", {
+      name: "put_document",
+      arguments: { name: "cv", html: HTML_V1 },
+    });
+    const id = toolJson(created.json!).id;
+
+    const taken = await rpc(env, "tools/call", {
+      name: "put_document",
+      arguments: { name: "resume", html: HTML_V2 },
+    });
+    expect(toolJson(taken.json!).created).toBe(true);
+
+    const conflict = await rpc(env, "tools/call", {
+      name: "rename_document",
+      arguments: { name: "cv", new_name: "resume" },
+    });
+    expect(toolJson(conflict.json!).error).toMatchObject({ code: "name_taken" });
+
+    const missing = await rpc(env, "tools/call", {
+      name: "rename_document",
+      arguments: { name: "missing", new_name: "other" },
+    });
+    expect(toolJson(missing.json!).error).toMatchObject({ code: "not_found" });
+
+    await rpc(env, "tools/call", {
+      name: "delete_document",
+      arguments: { name: "resume" },
+    });
+
+    const renamed = await rpc(env, "tools/call", {
+      name: "rename_document",
+      arguments: { name: "cv", new_name: "resume" },
+    });
+    expect(toolJson(renamed.json!)).toMatchObject({
+      id,
+      name: "resume",
+      from: "cv",
+      url: "http://demo.localhost:8787/resume",
+    });
+
+    const oldPage = await handlePublic(new Request("http://demo.localhost:8787/cv"), env);
+    expect(oldPage.status).toBe(404);
+    const newPage = await handlePublic(new Request("http://demo.localhost:8787/resume"), env);
+    expect(newPage.status).toBe(200);
+    expect(await newPage.text()).toContain("Version 1");
   });
 
   it("allows the configured app origin to read the list", async () => {

@@ -1,9 +1,11 @@
 {
   "mcpServers": {
     "webdocs": {
-      "url": "https://api.vibesite.online/mcp",
-      "headers": {
-        "Authorization": "Bearer ${MCP_KEY}"
+      "command": "sh",
+      "args": ["${CURSOR_PLUGIN_ROOT}/scripts/webdocs-mcp.sh"],
+      "env": {
+        "MCP_KEY": "${MCP_KEY}",
+        "WEBDOCS_API": "https://api.vibesite.online"
       }
     }
   }

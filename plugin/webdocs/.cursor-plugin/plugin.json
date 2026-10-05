@@ -1,7 +1,7 @@
 {
   "name": "webdocs",
-  "version": "0.1.0",
-  "description": "Save HTML into the Web Docs folder. Bundles the web-docs skill and the webdocs MCP server.",
+  "version": "0.2.0",
+  "description": "Save HTML into the Web Docs folder. Bundles the web-docs skill and a local curl MCP uploader.",
   "keywords": ["webdocs", "mcp", "html", "documents"],
   "variables": {
     "type": "object",

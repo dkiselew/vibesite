@@ -35,7 +35,7 @@ npm run dev
 }
 ```
 
-Как агенту класть документы, описано в `.cursor/skills/web-docs/SKILL.md`.
+Как агенту класть документы, описано в `plugin/webdocs/skills/web-docs/SKILL.md`. Плагин заливает файл локальным `curl` (`PUT /api/documents/{name}`), а не HTML в аргументах MCP.
 
 Проверки: `npm test` и `npm run typecheck`.
 

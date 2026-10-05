@@ -5,6 +5,7 @@ import {
   getDocument,
   listDocuments,
   putDocument,
+  renameDocument,
 } from "./documents";
 import { appError, errorBody, messages, type AppError } from "./errors";
 
@@ -26,7 +27,7 @@ const tools = [
   {
     name: "list_documents",
     description:
-      "List documents in this folder: name, canonical URL, updated_at, and bytes. Does not return HTML. Call this before put_document so an existing name is not replaced by accident. Sorted by updated_at descending.",
+      "List documents in this folder: id, name, canonical URL, updated_at, and bytes. Does not return HTML. Call this before put_document so an existing name is not replaced by accident. Sorted by updated_at descending.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -36,19 +37,19 @@ const tools = [
   {
     name: "put_document",
     description:
-      "Create or replace an HTML document. The name is the URL path segment. A second call with the same name replaces the body and keeps the URL. The page is live immediately; there is no publish or deploy tool. Returns JSON with the canonical url.",
+      "Create or replace a document. The name is the URL path segment. A second call with the same name replaces the body and keeps the URL. A name ending in .md is markdown: it is rendered into the reading template and only the HTML is stored. Any other name stores HTML as sent. The page is live immediately; there is no publish or deploy tool. Returns JSON with the canonical url.",
     inputSchema: {
       type: "object",
       properties: {
         name: {
           type: "string",
           description:
-            "Document name, 1–64 chars. Lowercase letters, numbers, and hyphens. A single trailing .html is removed.",
+            "Document name, 1–64 chars. Lowercase letters, numbers, and hyphens. A single trailing .html or .md is removed. A trailing .md means the html field is markdown and will be rendered.",
         },
         html: {
           type: "string",
           description:
-            "HTML to store. A fragment without <html> is wrapped. Author scripts are kept.",
+            "HTML to store, or markdown when the name ends with .md. An HTML fragment without <html> is wrapped. Markdown is rendered into the reading template and the source is not stored. Author scripts in HTML are kept.",
         },
       },
       required: ["name", "html"],
@@ -77,6 +78,26 @@ const tools = [
         name: { type: "string" },
       },
       required: ["name"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "rename_document",
+    description:
+      "Change the URL path segment. The document id stays the same. The old URL 404s; there is no redirect. Fails with name_taken if the new name is already used.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Current document name.",
+        },
+        new_name: {
+          type: "string",
+          description: "New document name. Same grammar as put_document.",
+        },
+      },
+      required: ["name", "new_name"],
       additionalProperties: false,
     },
   },
@@ -192,6 +213,26 @@ async function callTool(
     const result = await deleteDocument(env.BUCKET, args.name);
     if (result.ok) {
       console.log(JSON.stringify({ event: "delete_document", name: result.value.deleted }));
+    }
+    return result;
+  }
+
+  if (name === "rename_document") {
+    const missing = requireFields(args, ["name", "new_name"]);
+    if (missing) return { ok: false, error: missing };
+    const result = await renameDocument(env.BUCKET, env, {
+      name: args.name,
+      new_name: args.new_name,
+    });
+    if (result.ok) {
+      console.log(
+        JSON.stringify({
+          event: "rename_document",
+          from: result.value.from,
+          name: result.value.name,
+          id: result.value.id,
+        }),
+      );
     }
     return result;
   }

@@ -1,4 +1,5 @@
 export type DocumentRow = {
+  id: string | null;
   name: string;
   url: string;
   updated_at: string;

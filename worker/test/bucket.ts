@@ -2,6 +2,7 @@ type Row = {
   body: string;
   uploaded: Date;
   httpMetadata: R2HTTPMetadata;
+  customMetadata: Record<string, string>;
 };
 
 function objectView(key: string, row: Row): R2Object {
@@ -22,7 +23,9 @@ function objectView(key: string, row: Row): R2Object {
     get httpMetadata() {
       return row.httpMetadata;
     },
-    customMetadata: {},
+    get customMetadata() {
+      return { ...row.customMetadata };
+    },
     writeHttpMetadata(headers: Headers) {
       if (row.httpMetadata.contentType) headers.set("content-type", row.httpMetadata.contentType);
       if (row.httpMetadata.cacheControl) headers.set("cache-control", row.httpMetadata.cacheControl);
@@ -32,6 +35,7 @@ function objectView(key: string, row: Row): R2Object {
 
 export function createMemoryBucket(): R2Bucket & {
   setUploaded(key: string, uploaded: Date): void;
+  seedWithoutId(key: string, html: string): void;
 } {
   const rows = new Map<string, Row>();
 
@@ -41,7 +45,19 @@ export function createMemoryBucket(): R2Bucket & {
       if (!row) throw new Error(`missing ${key}`);
       row.uploaded = uploaded;
     },
-    async put(key: string, value: ReadableStream | ArrayBuffer | ArrayBufferView | string | null | Blob, options?: R2PutOptions) {
+    seedWithoutId(key: string, html: string) {
+      rows.set(key, {
+        body: html,
+        uploaded: new Date(),
+        httpMetadata: { contentType: "text/html; charset=utf-8" },
+        customMetadata: {},
+      });
+    },
+    async put(
+      key: string,
+      value: ReadableStream | ArrayBuffer | ArrayBufferView | string | null | Blob,
+      options?: R2PutOptions,
+    ) {
       if (typeof value !== "string") {
         throw new Error("memory bucket only stores strings in this prototype");
       }
@@ -49,6 +65,7 @@ export function createMemoryBucket(): R2Bucket & {
         body: value,
         uploaded: new Date(),
         httpMetadata: { ...options?.httpMetadata },
+        customMetadata: { ...options?.customMetadata },
       };
       rows.set(key, row);
       return objectView(key, row);
@@ -59,6 +76,7 @@ export function createMemoryBucket(): R2Bucket & {
       const view = objectView(key, row);
       return {
         ...view,
+        customMetadata: { ...row.customMetadata },
         body: new Blob([row.body]).stream(),
         bodyUsed: false,
         arrayBuffer: async () => new TextEncoder().encode(row.body).buffer,
@@ -92,5 +110,8 @@ export function createMemoryBucket(): R2Bucket & {
     },
   };
 
-  return bucket as unknown as R2Bucket & { setUploaded(key: string, uploaded: Date): void };
+  return bucket as unknown as R2Bucket & {
+    setUploaded(key: string, uploaded: Date): void;
+    seedWithoutId(key: string, html: string): void;
+  };
 }

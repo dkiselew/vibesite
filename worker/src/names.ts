@@ -11,7 +11,9 @@ export function normalizeDocumentName(input: unknown): Result<string> {
   }
 
   let name = input.trim().toLowerCase();
-  if (name.endsWith(".html")) {
+  if (name.endsWith(".md")) {
+    name = name.slice(0, -".md".length);
+  } else if (name.endsWith(".html")) {
     name = name.slice(0, -".html".length);
   }
 
