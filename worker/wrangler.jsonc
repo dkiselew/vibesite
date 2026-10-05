@@ -17,6 +17,7 @@
 		}
 	},
 	// Local `wrangler dev`. Production values live in env.production.
+	// BUCKET is the real R2 bucket; `remote` only affects local dev.
 	"vars": {
 		"WORKSPACE_SLUG": "demo",
 		"HOST": "localhost:8787",
@@ -26,11 +27,7 @@
 	"r2_buckets": [
 		{
 			"binding": "BUCKET",
-			"bucket_name": "webdocs"
-		},
-		{
 			"bucket_name": "webdocs",
-			"binding": "webdocs",
 			"remote": true
 		}
 	],
