@@ -27,7 +27,7 @@ export function errorBody(error: AppError): { error: { code: ErrorCode; message:
 }
 
 export const messages = {
-  unauthorized: "Invalid or missing API key.",
+  unauthorized: "Sign in required.",
   invalidName: "Name must be 1–64 chars: lowercase letters, numbers, hyphens.",
   notFound: "Document not found.",
   nameTaken: "That name is already in use.",

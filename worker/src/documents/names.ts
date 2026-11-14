@@ -1,4 +1,4 @@
-import { appError, messages, type Result } from "./errors";
+import { appError, messages, type Result } from "../errors";
 
 const NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 

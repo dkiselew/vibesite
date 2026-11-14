@@ -1,3 +1,5 @@
+import type { ObjectStore } from "../store/store";
+
 const NOT_FOUND_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,7 +12,7 @@ const NOT_FOUND_HTML = `<!DOCTYPE html>
 </html>
 `;
 
-function notFound(): Response {
+export function documentNotFound(): Response {
   return new Response(NOT_FOUND_HTML, {
     status: 404,
     headers: {
@@ -22,7 +24,8 @@ function notFound(): Response {
 
 export async function handlePublic(
   request: Request,
-  env: { BUCKET: R2Bucket },
+  store: ObjectStore,
+  organizationId: string,
 ): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response(null, { status: 405, headers: { Allow: "GET, HEAD" } });
@@ -34,35 +37,22 @@ export async function handlePublic(
     target.pathname = url.pathname.slice(0, -1);
     return Response.redirect(target.toString(), 301);
   }
-
-  if (url.pathname === "/") return notFound();
+  if (url.pathname === "/") return documentNotFound();
 
   let name: string;
   try {
     name = decodeURIComponent(url.pathname.slice(1));
   } catch {
-    return notFound();
+    return documentNotFound();
   }
-  if (!name || name.includes("/")) return notFound();
+  if (!name || name.includes("/")) return documentNotFound();
 
-  const object = await env.BUCKET.get(name);
-  if (!object) return notFound();
+  const object = await store.get(organizationId, name);
+  if (!object) return documentNotFound();
 
   const headers = new Headers();
-  object.writeHttpMetadata(headers);
-  if (!headers.has("content-type")) {
-    headers.set("Content-Type", "text/html; charset=utf-8");
-  }
+  headers.set("Content-Type", object.contentType || "text/html; charset=utf-8");
   headers.set("Cache-Control", "no-cache");
-
-  if (request.method === "HEAD") {
-    return new Response(null, { status: 200, headers });
-  }
+  if (request.method === "HEAD") return new Response(null, { status: 200, headers });
   return new Response(object.body, { status: 200, headers });
 }
-
-export default {
-  fetch(request: Request, env: { BUCKET: R2Bucket }): Promise<Response> {
-    return handlePublic(request, env);
-  },
-};

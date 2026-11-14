@@ -1,6 +1,6 @@
 import { Marked } from "marked";
-import { MAX_HTML_BYTES } from "./config";
-import { appError, messages, type Result } from "./errors";
+import { MAX_HTML_BYTES } from "../config";
+import { appError, messages, type Result } from "../errors";
 
 function escapeHtml(value: string): string {
   return value

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeDocumentName } from "../src/names";
+import { normalizeDocumentName } from "../src/documents/names";
 
 describe("normalizeDocumentName", () => {
   it("lowercases and strips one .html suffix", () => {

@@ -1,87 +1,57 @@
-import { Hono } from "hono";
-import { bearerMatches } from "./auth";
-import { MAX_HTML_BYTES, publicOrigin } from "./config";
-import { deleteDocument, listDocuments, putDocument } from "./documents";
-import { appError, errorBody, messages } from "./errors";
-import { handleMcp, type McpEnv } from "./mcp";
+import { createAuth } from "./auth";
+import { createApp } from "./http/app";
+import type { RuntimeConfig } from "./config";
+import { handleRequest } from "./http/serve";
+import { createS3Store, readS3Config } from "./store/s3-store";
+import { unavailableStore } from "./store/store";
 
-const app = new Hono<{ Bindings: Env }>();
+type WorkerBindings = {
+  DB: D1Database;
+  ASSETS: Fetcher;
+  HOST: string;
+  URL_SCHEME: string;
+  BETTER_AUTH_URL: string;
+  BETTER_AUTH_SECRET: string;
+  S3_ENDPOINT?: string;
+  S3_BUCKET?: string;
+  S3_ACCESS_KEY_ID?: string;
+  S3_SECRET_ACCESS_KEY?: string;
+  S3_REGION?: string;
+};
 
-app.use("/api/*", async (c, next) => {
-  const origin = c.req.header("Origin");
-  if (origin && origin === c.env.APP_ORIGIN) {
-    c.header("Access-Control-Allow-Origin", origin);
-    c.header("Vary", "Origin");
-    c.header("Access-Control-Allow-Methods", "GET, PUT, DELETE, OPTIONS");
-    c.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  }
-  if (c.req.method === "OPTIONS") {
-    return c.body(null, 204);
-  }
-  await next();
-});
+type Started = {
+  handle: (request: Request) => Promise<Response | null>;
+};
 
-app.get("/api/documents", async (c) => {
-  const documents = await listDocuments(c.env.BUCKET, c.env);
-  c.header("Cache-Control", "no-store");
-  return c.json({
-    workspace: c.env.WORKSPACE_SLUG,
-    origin: publicOrigin(c.env),
-    documents,
-  });
-});
+let started: Promise<Started> | null = null;
 
-app.put("/api/documents/:name", async (c) => {
-  const authorized = await bearerMatches(c.req.header("Authorization") ?? null, c.env.MCP_KEY);
-  if (!authorized) {
-    return c.json(errorBody(appError("unauthorized", messages.unauthorized, 401)), 401);
-  }
-
-  const contentLength = Number(c.req.header("Content-Length") ?? "0");
-  if (Number.isFinite(contentLength) && contentLength > MAX_HTML_BYTES) {
-    return c.json(errorBody(appError("limit_exceeded", messages.limitBytes, 413)), 413);
-  }
-
-  const html = await c.req.text();
-  const result = await putDocument(c.env.BUCKET, c.env, {
-    name: c.req.param("name"),
-    html,
-    contentType: c.req.header("Content-Type") ?? null,
-  });
-  if (!result.ok) {
-    return new Response(JSON.stringify(errorBody(result.error)), {
-      status: result.error.status,
-      headers: {
-        "Content-Type": "application/json",
-        "Cache-Control": "no-store",
-      },
+function boot(env: WorkerBindings): Promise<Started> {
+  started ??= (async () => {
+    const config: RuntimeConfig = {
+      HOST: env.HOST,
+      URL_SCHEME: env.URL_SCHEME,
+      BETTER_AUTH_URL: env.BETTER_AUTH_URL.replace(/\/$/, ""),
+    };
+    const auth = await createAuth({
+      database: env.DB,
+      secret: env.BETTER_AUTH_SECRET,
+      baseURL: config.BETTER_AUTH_URL,
     });
-  }
-  c.header("Cache-Control", "no-store");
-  return c.json(result.value);
-});
+    const s3 = readS3Config(env);
+    const store = s3 ? createS3Store(s3) : unavailableStore();
+    const app = createApp({ auth, store, config });
+    return {
+      handle: (request) => handleRequest(request, { auth, store, config, app }),
+    };
+  })();
+  return started;
+}
 
-app.delete("/api/documents/:name", async (c) => {
-  const result = await deleteDocument(c.env.BUCKET, c.req.param("name"));
-  if (!result.ok) {
-    return new Response(JSON.stringify(errorBody(result.error)), {
-      status: result.error.status,
-      headers: {
-        "Content-Type": "application/json",
-        "Cache-Control": "no-store",
-      },
-    });
-  }
-  c.header("Cache-Control", "no-store");
-  return c.json(result.value);
-});
-
-app.on(["POST", "GET", "DELETE"], "/mcp", (c) => {
-  return handleMcp(c.req.raw, c.env satisfies McpEnv);
-});
-
-app.all("*", (c) => {
-  return c.json({ error: { code: "not_found", message: "Not found." } }, 404);
-});
-
-export default app;
+export default {
+  async fetch(request: Request, env: WorkerBindings): Promise<Response> {
+    const runtime = await boot(env);
+    const handled = await runtime.handle(request);
+    if (handled) return handled;
+    return env.ASSETS.fetch(request);
+  },
+};

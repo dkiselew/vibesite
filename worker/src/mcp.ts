@@ -1,4 +1,3 @@
-import { bearerMatches } from "./auth";
 import type { UrlConfig } from "./config";
 import {
   deleteDocument,
@@ -6,13 +5,15 @@ import {
   listDocuments,
   putDocument,
   renameDocument,
-} from "./documents";
+  type DocumentScope,
+} from "./documents/documents";
 import { appError, errorBody, messages, type AppError } from "./errors";
+import type { ObjectStore } from "./store/store";
 
-export type McpEnv = UrlConfig & {
-  BUCKET: R2Bucket;
-  MCP_KEY: string;
-};
+export type McpEnv = UrlConfig &
+  DocumentScope & {
+    store: ObjectStore;
+  };
 
 type JsonRpcId = string | number | null;
 
@@ -22,12 +23,35 @@ type ToolContent = {
 };
 
 const PROTOCOL_VERSIONS = ["2025-03-26", "2024-11-05"];
+const MAX_RPC_BYTES = 6 * 1024 * 1024;
+
+const INSTRUCTIONS = `Documents are live at the url returned by the write tools. There is no draft, preview, publish, or deploy step.
+
+A new document is markdown. Call list_documents, pick a name that is not already in the list, and call put_markdown_document. Do not add a document shell, Tailwind, or font tags. The server renders that markdown into the reading template and stores only the HTML. The markdown is not kept.
+
+Edit an existing page with get_document, change only the part the user asked for, then put_html_document with the full HTML. Do not call get_document again for a body you just wrote. Call put_markdown_document on an existing name only when the user asked to rewrite the page from scratch. That renders the template again and replaces any HTML edits.
+
+If the chosen name is already in the list, replace it only when the user asked to update that document. If they asked for a new document, pick another valid name or ask. Do not overwrite silently.
+
+Rename with rename_document, not a write plus delete_document. The id stays the same. Call delete_document only when the user asked to delete.
+
+Read url from the write result and show it as a clickable markdown link. Do not invent a different address. Do not paste the page into the chat and do not write the HTML into the user's repository.
+
+Images and other assets must be https: URLs or data: URIs. No local paths and no relative files. Author script tags in HTML are stored and served as written.
+
+A single trailing .html or .md is stripped from the name and does not choose the format. The tool does.`;
+
+const nameProperty = {
+  type: "string",
+  description:
+    "Document name, 1–64 chars. Lowercase letters, numbers, and hyphens. A single trailing .html or .md is removed and does not choose the format.",
+};
 
 const tools = [
   {
     name: "list_documents",
     description:
-      "List documents in this folder: id, name, canonical URL, updated_at, and bytes. Does not return HTML. Call this before put_document so an existing name is not replaced by accident. Sorted by updated_at descending.",
+      "List documents in this folder: id, name, canonical URL, updated_at, and bytes. Does not return HTML. Call this before creating a document so an existing name is not replaced by accident. Sorted by updated_at descending.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -35,21 +59,34 @@ const tools = [
     },
   },
   {
-    name: "put_document",
+    name: "put_markdown_document",
     description:
-      "Create or replace a document. The name is the URL path segment. A second call with the same name replaces the body and keeps the URL. A name ending in .md is markdown: it is rendered into the reading template and only the HTML is stored. Any other name stores HTML as sent. The page is live immediately; there is no publish or deploy tool. Returns JSON with the canonical url.",
+      "Create a document or rewrite it from scratch. The server renders the markdown into the reading template and stores only the HTML. The markdown source is not kept. A second call with the same name renders the template again and erases manual HTML edits. The page is live immediately. There is no publish or deploy tool. Returns JSON with the canonical url and does not echo the body.",
     inputSchema: {
       type: "object",
       properties: {
-        name: {
+        name: nameProperty,
+        markdown: {
           type: "string",
-          description:
-            "Document name, 1–64 chars. Lowercase letters, numbers, and hyphens. A single trailing .html or .md is removed. A trailing .md means the html field is markdown and will be rendered.",
+          description: "Markdown source. Do not include a document shell, Tailwind, or font tags.",
         },
+      },
+      required: ["name", "markdown"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "put_html_document",
+    description:
+      "Store HTML as sent. A fragment without <html> is wrapped. The markdown template does not run, even when the name ends in .md. A second call with the same name replaces the body and keeps the URL. Use this to edit an existing page: send the full page. Returns JSON with the canonical url and does not echo the body.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: nameProperty,
         html: {
           type: "string",
           description:
-            "HTML to store, or markdown when the name ends with .md. An HTML fragment without <html> is wrapped. Markdown is rendered into the reading template and the source is not stored. Author scripts in HTML are kept.",
+            "HTML to store. An HTML fragment without <html> is wrapped. Author scripts are kept.",
         },
       },
       required: ["name", "html"],
@@ -58,7 +95,8 @@ const tools = [
   },
   {
     name: "get_document",
-    description: "Read the original HTML stored for a document, plus its canonical URL.",
+    description:
+      "Read the original HTML stored for a document, plus its canonical URL. This is not the public copy: no banner and no script stripping. Call this before editing an existing page. Do not call it again for a body you just wrote.",
     inputSchema: {
       type: "object",
       properties: {
@@ -94,7 +132,7 @@ const tools = [
         },
         new_name: {
           type: "string",
-          description: "New document name. Same grammar as put_document.",
+          description: "New document name. Same grammar as the write tools.",
         },
       },
       required: ["name", "new_name"],
@@ -174,25 +212,30 @@ async function callTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<{ ok: true; value: unknown } | { ok: false; error: AppError }> {
+  const scope = { organizationId: env.organizationId, slug: env.slug };
+
   if (name === "list_documents") {
-    const documents = await listDocuments(env.BUCKET, env);
+    const documents = await listDocuments(env.store, env, scope);
     return {
       ok: true,
-      value: { workspace: env.WORKSPACE_SLUG, documents },
+      value: { workspace: env.slug, documents },
     };
   }
 
-  if (name === "put_document") {
-    const missing = requireFields(args, ["name", "html"]);
+  if (name === "put_markdown_document" || name === "put_html_document") {
+    const format = name === "put_markdown_document" ? "markdown" : "html";
+    const bodyField = format === "markdown" ? "markdown" : "html";
+    const missing = requireFields(args, ["name", bodyField]);
     if (missing) return { ok: false, error: missing };
-    const result = await putDocument(env.BUCKET, env, {
+    const result = await putDocument(env.store, env, scope, {
       name: args.name,
-      html: args.html,
+      html: args[bodyField],
+      format,
     });
     if (!result.ok) return result;
     console.log(
       JSON.stringify({
-        event: "put_document",
+        event: name,
         name: result.value.name,
         created: result.value.created,
         bytes: result.value.bytes,
@@ -204,13 +247,13 @@ async function callTool(
   if (name === "get_document") {
     const missing = requireFields(args, ["name"]);
     if (missing) return { ok: false, error: missing };
-    return getDocument(env.BUCKET, env, args.name);
+    return getDocument(env.store, env, scope, args.name);
   }
 
   if (name === "delete_document") {
     const missing = requireFields(args, ["name"]);
     if (missing) return { ok: false, error: missing };
-    const result = await deleteDocument(env.BUCKET, args.name);
+    const result = await deleteDocument(env.store, scope, args.name);
     if (result.ok) {
       console.log(JSON.stringify({ event: "delete_document", name: result.value.deleted }));
     }
@@ -220,7 +263,7 @@ async function callTool(
   if (name === "rename_document") {
     const missing = requireFields(args, ["name", "new_name"]);
     if (missing) return { ok: false, error: missing };
-    const result = await renameDocument(env.BUCKET, env, {
+    const result = await renameDocument(env.store, env, scope, {
       name: args.name,
       new_name: args.new_name,
     });
@@ -251,15 +294,8 @@ export async function handleMcp(request: Request, env: McpEnv): Promise<Response
     return new Response(null, { status: 405, headers: { Allow: "POST" } });
   }
 
-  const authorized = await bearerMatches(request.headers.get("Authorization"), env.MCP_KEY);
-  if (!authorized) {
-    return jsonResponse(errorBody(appError("unauthorized", messages.unauthorized, 401)), 401, {
-      "WWW-Authenticate": "Bearer",
-    });
-  }
-
   const contentLength = Number(request.headers.get("Content-Length") ?? "0");
-  if (Number.isFinite(contentLength) && contentLength > 3 * 1024 * 1024) {
+  if (Number.isFinite(contentLength) && contentLength > MAX_RPC_BYTES) {
     return jsonResponse(errorBody(appError("limit_exceeded", messages.limitBytes, 413)), 413);
   }
 
@@ -308,6 +344,7 @@ export async function handleMcp(request: Request, env: McpEnv): Promise<Response
         protocolVersion,
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: "webdocs", version: "0.1.0" },
+        instructions: INSTRUCTIONS,
       },
     });
   }

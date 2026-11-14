@@ -1,95 +1,38 @@
 # Web Docs
 
-Прототип Stage 0: агент кладёт HTML через MCP, документ появляется в списке и открывается по стабильному URL. Повторная запись меняет тело и не меняет адрес.
+Агент кладёт HTML через MCP. Документ появляется в папке пользователя и открывается по адресу `{slug}.{host}/{name}`. Повторная запись меняет тело и не меняет адрес.
 
-Локально два процесса: API и список. В проде список — Cloudflare Pages, API и MCP — Worker, сами страницы — бакет R2 на субдомене.
+Один процесс отдаёт и список, и API. Пользователи лежат в файле SQLite (`DATA_FILE`). На Cloudflare тот же код открывает D1, если есть биндинг `DB`. Тела документов пишет S3-совместимое хранилище: R2 или Object Storage.
 
 ## Локально
 
 ```bash
 npm install
-cp worker/.dev.vars.example worker/.dev.vars
+cp worker/.env.example worker/.env
 npm run dev
 ```
 
-- Список: http://localhost:5173
-- MCP: http://localhost:8787/mcp
-- Публичная страница: http://demo.localhost:8787/{name}
+- Список, вход и API: http://localhost:5173
+- Процесс Node: http://127.0.0.1:8788
 
-Локальный процесс на `:8787` смотрит на заголовок `Host`. `demo.localhost` отдаёт объект из R2, `localhost` — API и MCP. В проде этого ветвления нет: Worker деплоится из `src/index.ts` и документы отдаёт сам R2.
+Порт 8787 оставлен свободному: десктопный Cursor принимает OAuth-код на `http://localhost:8787/callback`. MCP в Cursor — `http://localhost:5173/mcp`.
+- Публичная страница: http://{slug}.localhost:5173/{name}
 
-Ключ для локального MCP — значение `MCP_KEY` в `worker/.dev.vars` (`dev-key-change-me`, пока файл не меняли).
+`npm run dev` открывает файл SQLite и создаёт таблицы Better Auth. Каталог для `DATA_FILE` создаётся сам. Без `S3_*` вход работает, запись документов отвечает ошибкой хранилища.
 
-В Cursor, Settings → MCP, добавь сервер:
-
-```json
-{
-  "mcpServers": {
-    "webdocs": {
-      "url": "http://localhost:8787/mcp",
-      "headers": {
-        "Authorization": "Bearer dev-key-change-me"
-      }
-    }
-  }
-}
-```
-
-Как агенту класть документы, описано в `plugin/webdocs/skills/web-docs/SKILL.md`. Плагин заливает файл локальным `curl` (`PUT /api/documents/{name}`), а не HTML в аргументах MCP.
+Вход — email и пароль. Агент подключается к `POST /mcp` кнопкой Add to Cursor. Cursor проводит OAuth: пользователь входит и подтверждает папку. Тот же URL подключают в Cloud Agents отдельно. Вход в десктопе туда не переносится.
 
 Проверки: `npm test` и `npm run typecheck`.
 
 ## Деплой
 
-Нужен аккаунт Cloudflare и зона (для этого репозитория — `vibesite.online`) на том же аккаунте. Свой сервер не нужен. Команды ниже не запускались из этого прототипа.
+Нужен аккаунт Cloudflare, база D1 и бакет R2 с S3-ключом. `database_id` в `worker/wrangler.jsonc` замените на свою базу.
 
-1. Войди в Wrangler: `npx wrangler login` из каталога `worker`.
-2. Создай бакет: `npx wrangler r2 bucket create webdocs`.
-3. Поправь `env.production.vars` в `worker/wrangler.jsonc`, если зона или слаг не `vibesite.online` / `demo`. `WORKSPACE_SLUG` — лейбл субдомена, человек его в UI не выбирает.
-4. Положи ключ MCP (это не переменная в репозитории):
+1. `npx wrangler login` из каталога `worker`.
+2. `npx wrangler d1 create webdocs` и подставьте `database_id`.
+3. Секреты: `BETTER_AUTH_SECRET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`. Переменные `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`.
+4. `npm run deploy:web` собирает веб-приложение и деплоит Worker. Страницы и API живут на `HOST`.
 
-   ```bash
-   cd worker
-   npx wrangler secret put MCP_KEY --env production
-   ```
+Публичный URL документа: `https://{slug}.vibesite.online/{name}`. Его отдаёт тот же Worker, прочитав объект `{organizationId}/{name}`.
 
-5. Задеплой API:
-
-   ```bash
-   npm run deploy -w worker
-   ```
-
-   В dashboard у Worker `webdocs-api` добавь custom domain `api.vibesite.online`. Запись DNS создаётся сама, proxied. SSL — Full (strict), режим Cloudflare по умолчанию для proxied-записей.
-
-6. Собери список и задеплой Pages. `VITE_API_ORIGIN` берётся из `web/.env.production` на момент сборки — он должен совпадать с доменом Worker.
-
-   ```bash
-   npm run build -w web
-   cd web
-   npx wrangler pages deploy dist --project-name webdocs
-   ```
-
-   У проекта Pages добавь custom domain `vibesite.online` (apex). `www` не занимай.
-
-7. Открой бакет R2 → Settings → Custom Domains → Add → `demo.vibesite.online`. Это отдельная запись на лейбл `demo`, не wildcard. Публичный URL документа: `https://demo.vibesite.online/cv`. Корень субдомена списком не является.
-
-   Не вешай `demo.vibesite.online` на Worker. `src/dev.ts` — только локальная подмена этой раздачи.
-
-8. Caching → Cache Rules → Create rule: если hostname равен `demo.vibesite.online`, действие Bypass cache. Иначе замена документа может остаться в кэше Cloudflare. `Cache-Control: no-cache` на объекте уже выставляется при записи.
-
-9. Подключи MCP уже на боевой адрес:
-
-   ```json
-   {
-     "mcpServers": {
-       "webdocs": {
-         "url": "https://api.vibesite.online/mcp",
-         "headers": {
-           "Authorization": "Bearer <MCP_KEY>"
-         }
-       }
-     }
-   }
-   ```
-
-Смена ключа — новый `wrangler secret put MCP_KEY --env production` и тот же ключ в конфиге Cursor. Перевыпуска в UI нет.
+Как агенту класть документы, сервер сообщает в `instructions` ответа `initialize`. Новый документ — `put_markdown_document`. Правка — `get_document` и полный `put_html_document`. `PUT /api/documents/{name}` остаётся для веб-клиента.

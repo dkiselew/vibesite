@@ -1,10 +1,7 @@
-const LOCAL_MCP_URL = "http://127.0.0.1:8787/mcp";
-
 export function cursorMcpInstallHref(apiOrigin = import.meta.env.VITE_API_ORIGIN ?? ""): string {
-  const origin = apiOrigin.replace(/\/$/, "");
+  const origin = (apiOrigin || window.location.origin).replace(/\/$/, "");
   const config = {
-    url: origin ? `${origin}/mcp` : LOCAL_MCP_URL,
-    headers: { Authorization: "Bearer <MCP_KEY>" },
+    url: `${origin}/mcp`,
   };
   const link = new URL("cursor://anysphere.cursor-deeplink/mcp/install");
   link.searchParams.set("name", "webdocs");

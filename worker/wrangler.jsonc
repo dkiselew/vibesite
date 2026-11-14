@@ -3,32 +3,28 @@
 	"name": "webdocs-api",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-09-23",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
+	"compatibility_flags": ["nodejs_compat"],
+	"assets": {
+		"directory": "../web/dist",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application",
+		"run_worker_first": true
+	},
 	"observability": {
 		"enabled": true,
-		"logs": {
-			"head_sampling_rate": 1
-		},
-		"traces": {
-			"enabled": true,
-			"head_sampling_rate": 1
-		}
+		"logs": { "head_sampling_rate": 1 },
+		"traces": { "enabled": true, "head_sampling_rate": 1 }
 	},
-	// Local `wrangler dev`. Production values live in env.production.
-	// BUCKET is the real R2 bucket; `remote` only affects local dev.
 	"vars": {
-		"WORKSPACE_SLUG": "demo",
 		"HOST": "localhost:8787",
 		"URL_SCHEME": "http",
-		"APP_ORIGIN": "http://localhost:5173"
+		"BETTER_AUTH_URL": "http://localhost:5173"
 	},
-	"r2_buckets": [
+	"d1_databases": [
 		{
-			"binding": "BUCKET",
-			"bucket_name": "webdocs",
-			"remote": true
+			"binding": "DB",
+			"database_name": "webdocs",
+			"database_id": "00000000-0000-4000-8000-000000000001"
 		}
 	],
 	"env": {
@@ -36,30 +32,30 @@
 			"name": "webdocs-api",
 			"main": "src/index.ts",
 			"compatibility_date": "2026-09-23",
-			"compatibility_flags": [
-				"nodejs_compat"
-			],
+			"compatibility_flags": ["nodejs_compat"],
+			"assets": {
+				"directory": "../web/dist",
+				"binding": "ASSETS",
+				"not_found_handling": "single-page-application",
+				"run_worker_first": true
+			},
 			"vars": {
-				"WORKSPACE_SLUG": "demo",
 				"HOST": "vibesite.online",
 				"URL_SCHEME": "https",
-				"APP_ORIGIN": "https://vibesite.online"
+				"BETTER_AUTH_URL": "https://vibesite.online",
+				"S3_REGION": "auto"
 			},
-			"r2_buckets": [
+			"d1_databases": [
 				{
-					"binding": "BUCKET",
-					"bucket_name": "webdocs"
+					"binding": "DB",
+					"database_name": "webdocs",
+					"database_id": "b2c0e086-471d-436f-938d-31fb5788a5f5"
 				}
 			],
 			"observability": {
 				"enabled": true,
-				"logs": {
-					"head_sampling_rate": 1
-				},
-				"traces": {
-					"enabled": true,
-					"head_sampling_rate": 1
-				}
+				"logs": { "head_sampling_rate": 1 },
+				"traces": { "enabled": true, "head_sampling_rate": 1 }
 			}
 		}
 	}

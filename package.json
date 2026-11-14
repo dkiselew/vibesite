@@ -9,9 +9,7 @@
     "dev": "concurrently -k -n api,web -c cyan,magenta \"npm run dev -w worker\" \"npm run dev -w web\"",
     "test": "npm run test -w worker",
     "typecheck": "npm run typecheck -w worker && npm run typecheck -w web",
-    "deploy:api": "npm run deploy -w worker",
-    "deploy:web": "npm run build -w web && npm exec -w worker -- wrangler pages deploy ../web/dist --project-name webdocs",
-    "plugin:install": "rm -rf \"$HOME/.cursor/plugins/local/webdocs\" && mkdir -p \"$HOME/.cursor/plugins/local\" && cp -R plugin/webdocs \"$HOME/.cursor/plugins/local/webdocs\""
+    "deploy:web": "npm run build -w web && npm run deploy -w worker"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
@@ -19,6 +17,7 @@
   "allowScripts": {
     "esbuild@0.28.2": true,
     "esbuild@0.28.1": true,
-    "workerd@1.20260921.1": true
+    "workerd@1.20260921.1": true,
+    "better-sqlite3@13.0.3": true
   }
 }

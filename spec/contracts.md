@@ -577,6 +577,8 @@ GET публичного URL после delete → 404. Имя свободно 
 
 ## Вне контракта Stage 1
 
-Не специфицировать и не строить: password gate, signed unlisted URLs, view counters, custom domain, снятие плашки, TTL ссылки, `rename_document` tool, upload ассетов, webhooks, список по API без MCP, viewer-роли, вложенные папки, второй owned workspace, transfer ownership, MCP tools для invite.
+Не специфицировать и не строить: password gate, signed unlisted URLs, view counters, custom domain, снятие плашки, TTL ссылки, `rename_document` tool, `patch_document`, upload ассетов, webhooks, список по API без MCP, viewer-роли, вложенные папки, второй owned workspace, transfer ownership, MCP tools для invite.
+
+Идеи точечной правки HTML и чтения куском — в [html-edits.md](./html-edits.md). Пока их нет в списке tools.
 
 Stage 2 шаблоны (не этот контракт): каталог на apex `https://{host}/templates/{id}` и спека `https://{host}/templates/{id}.md`. Это не Document, не workspace, не MCP Stage 1.

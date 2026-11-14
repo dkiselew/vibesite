@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { prepareHtml } from "../src/html";
+import { prepareHtml } from "../src/documents/html";
 import { MAX_HTML_BYTES } from "../src/config";
 
 describe("prepareHtml", () => {
