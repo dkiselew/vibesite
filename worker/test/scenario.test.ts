@@ -336,12 +336,12 @@ describe("stage 0 loop", () => {
     expect(api.status).toBe(404);
     expect(await api.json()).toEqual({ error: { code: "not_found", message: "Not found." } });
 
-    const apiSubdomain = await env.request("http://api.localhost:8787/api/documents", {
+    const list = await env.request("http://localhost:8787/api/documents", {
       method: "GET",
       headers: { Origin: "http://localhost:5173" },
     });
-    expect(apiSubdomain.status).toBe(200);
-    expect(apiSubdomain.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5173");
+    expect(list.status).toBe(200);
+    expect(list.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5173");
   });
 
   it("accepts a raw PUT of HTML and keeps the id on replace", async () => {
@@ -470,7 +470,7 @@ describe("stage 0 loop", () => {
     expect(response.status).toBe(401);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:5173");
 
-    const preflight = await env.request("http://api.localhost:8787/api/documents", {
+    const preflight = await env.request("http://localhost:8787/api/documents", {
       method: "OPTIONS",
       headers: { Origin: "http://localhost:5173", "Access-Control-Request-Method": "DELETE" },
       auth: false,

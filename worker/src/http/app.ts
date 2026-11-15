@@ -24,6 +24,11 @@ export function createApp(deps: AppDeps): Hono {
   const { auth, store, config } = deps;
   const app = new Hono();
 
+  app.onError((error, c) => {
+    logCaught(c.req.method, c.req.path, error);
+    return c.text("Internal Server Error", 500);
+  });
+
   app.use("/api/*", async (c, next) => {
     if (c.req.method === "OPTIONS") {
       const response = c.body(null, 204);
@@ -53,7 +58,7 @@ export function createApp(deps: AppDeps): Hono {
         documents,
       });
     } catch (error) {
-      return storageFailure(error);
+      return storageFailure(c.req.method, c.req.path, error);
     }
   });
 
@@ -75,7 +80,7 @@ export function createApp(deps: AppDeps): Hono {
       c.header("Cache-Control", "no-store");
       return c.json(result.value);
     } catch (error) {
-      return storageFailure(error);
+      return storageFailure(c.req.method, c.req.path, error);
     }
   });
 
@@ -88,7 +93,7 @@ export function createApp(deps: AppDeps): Hono {
       c.header("Cache-Control", "no-store");
       return c.json(result.value);
     } catch (error) {
-      return storageFailure(error);
+      return storageFailure(c.req.method, c.req.path, error);
     }
   });
 
@@ -115,8 +120,16 @@ function allowAppOrigin(c: { req: { header(name: string): string | undefined }; 
   c.res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
 }
 
-function storageFailure(error: unknown): Response {
+function storageFailure(method: string, path: string, error: unknown): Response {
+  logCaught(method, path, error);
   const message = error instanceof Error ? error.message : "Object storage failed.";
   const status = message === "Object storage is not configured." ? 503 : 500;
   return jsonError(appError("bad_request", message, status));
+}
+
+function logCaught(method: string, path: string, error: unknown) {
+  const name = error instanceof Error ? error.name : "Error";
+  const message = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? error.stack : undefined;
+  console.error(`${method} ${path} ${name}: ${message}${stack ? `\n${stack}` : ""}`);
 }

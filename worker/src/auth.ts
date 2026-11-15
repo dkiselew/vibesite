@@ -26,6 +26,7 @@ export async function createAuth(options: {
   database: BetterAuthOptions["database"];
   secret: string;
   baseURL: string;
+  migrate?: boolean;
 }) {
   const baseURL = options.baseURL.replace(/\/$/, "");
   const secure = baseURL.startsWith("https:");
@@ -61,7 +62,9 @@ export async function createAuth(options: {
       },
     },
     plugins: [
-      jwt(),
+      jwt({
+        jwks: { disablePrivateKeyEncryption: true },
+      }),
       organization(),
       mcp({
         loginPage: "/sign-in",
@@ -90,9 +93,12 @@ export async function createAuth(options: {
     ],
   });
 
-  const { runMigrations } = await getMigrations(config);
-  await runMigrations();
+  if (options.migrate !== false) {
+    const { runMigrations } = await getMigrations(config);
+    await runMigrations();
+  }
   const auth = betterAuth(config);
+  await auth.$context;
   return auth;
 }
 

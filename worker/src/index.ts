@@ -23,28 +23,28 @@ type Started = {
   handle: (request: Request) => Promise<Response | null>;
 };
 
-let started: Promise<Started> | null = null;
+let migrated = false;
 
-function boot(env: WorkerBindings): Promise<Started> {
-  started ??= (async () => {
-    const config: RuntimeConfig = {
-      HOST: env.HOST,
-      URL_SCHEME: env.URL_SCHEME,
-      BETTER_AUTH_URL: env.BETTER_AUTH_URL.replace(/\/$/, ""),
-    };
-    const auth = await createAuth({
-      database: env.DB,
-      secret: env.BETTER_AUTH_SECRET,
-      baseURL: config.BETTER_AUTH_URL,
-    });
-    const s3 = readS3Config(env);
-    const store = s3 ? createS3Store(s3) : unavailableStore();
-    const app = createApp({ auth, store, config });
-    return {
-      handle: (request) => handleRequest(request, { auth, store, config, app }),
-    };
-  })();
-  return started;
+async function boot(env: WorkerBindings): Promise<Started> {
+  const config: RuntimeConfig = {
+    HOST: env.HOST,
+    URL_SCHEME: env.URL_SCHEME,
+    BETTER_AUTH_URL: env.BETTER_AUTH_URL.replace(/\/$/, ""),
+  };
+  // The auth context is one promise owned by the request that created it.
+  const auth = await createAuth({
+    database: env.DB,
+    secret: env.BETTER_AUTH_SECRET,
+    baseURL: config.BETTER_AUTH_URL,
+    migrate: !migrated,
+  });
+  migrated = true;
+  const s3 = readS3Config(env);
+  const store = s3 ? createS3Store(s3) : unavailableStore();
+  const app = createApp({ auth, store, config });
+  return {
+    handle: (request) => handleRequest(request, { auth, store, config, app }),
+  };
 }
 
 export default {

@@ -5,8 +5,7 @@ export function workspaceSlug(requestHost: string, appHost: string): string | nu
   const suffix = `.${app}`;
   if (!host.endsWith(suffix)) return null;
   const slug = host.slice(0, -suffix.length);
-  // api.{host} is the Worker custom domain, not a workspace.
-  if (!slug || slug.includes(".") || slug === "api") return null;
+  if (!slug || slug.includes(".")) return null;
   return slug;
 }
 

@@ -142,7 +142,6 @@ export function DocumentList() {
           </EmptyHeader>
           <EmptyContent>
             <AddToCursorButton />
-            <p>Cursor asks you to sign in and allow this folder.</p>
           </EmptyContent>
         </Empty>
       ) : null}

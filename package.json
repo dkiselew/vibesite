@@ -9,7 +9,7 @@
     "dev": "concurrently -k -n api,web -c cyan,magenta \"npm run dev -w worker\" \"npm run dev -w web\"",
     "test": "npm run test -w worker",
     "typecheck": "npm run typecheck -w worker && npm run typecheck -w web",
-    "deploy:web": "npm run build -w web && npm run deploy -w worker"
+    "deploy": "npm run build -w web && npm run deploy -w worker"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
